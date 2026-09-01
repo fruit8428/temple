@@ -357,6 +357,11 @@ const DEFAULT_DIRECTORS = [{
   name: '吳阿嬌',
   area: '雙溪/崩山 (北區)',
   phone: '0967-890-126'
+}, {
+  id: 'D7',
+  name: '王思婷',
+  area: '石碇區 (幹部)',
+  phone: ''
 }];
 const ZODIACS = ['鼠', '牛', '虎', '兔', '龍', '蛇', '馬', '羊', '猴', '雞', '狗', '豬'];
 
@@ -860,6 +865,52 @@ const Icons = {
   }), /*#__PURE__*/React.createElement("path", {
     d: "M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
     strokeWidth: "2"
+  })),
+  Smartphone: () => /*#__PURE__*/React.createElement("svg", {
+    className: "w-4 h-4",
+    fill: "none",
+    stroke: "currentColor",
+    viewBox: "0 0 24 24"
+  }, /*#__PURE__*/React.createElement("rect", {
+    width: "14",
+    height: "20",
+    x: "5",
+    y: "2",
+    rx: "2",
+    ry: "2",
+    strokeWidth: "2"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M12 18h.01",
+    strokeWidth: "2"
+  })),
+  Copy: () => /*#__PURE__*/React.createElement("svg", {
+    className: "w-4 h-4",
+    fill: "none",
+    stroke: "currentColor",
+    viewBox: "0 0 24 24"
+  }, /*#__PURE__*/React.createElement("rect", {
+    width: "14",
+    height: "14",
+    x: "8",
+    y: "8",
+    rx: "2",
+    ry: "2",
+    strokeWidth: "2"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2",
+    strokeWidth: "2"
+  })),
+  Send: () => /*#__PURE__*/React.createElement("svg", {
+    className: "w-4 h-4",
+    fill: "none",
+    stroke: "currentColor",
+    viewBox: "0 0 24 24"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "m22 2-7 20-4-9-9-4Z",
+    strokeWidth: "2"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M22 2 11 13",
+    strokeWidth: "2"
   }))
 };
 const App = () => {
@@ -900,6 +951,7 @@ const App = () => {
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [receiptDevotee, setReceiptDevotee] = useState(null);
   const [toastMessage, setToastMessage] = useState('');
+  const [syncCodeInput, setSyncCodeInput] = useState('');
 
   // 理事完整增修彈窗狀態
   const [directorModal, setDirectorModal] = useState({
@@ -1294,6 +1346,133 @@ const App = () => {
     }
   };
 
+  // 匯出完整 JSON 系統備份檔 (包含全體理事幹部、普渡與點燈信眾、品項設定與收款進度)
+  const handleExportJSON = () => {
+    const backupData = {
+      app: 'shiding_temple_system',
+      version: '3.0',
+      exportedAt: new Date().toISOString(),
+      directors,
+      products,
+      puduDevotees,
+      lightingDevotees
+    };
+    const jsonStr = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonStr], {
+      type: 'application/json;charset=utf-8;'
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `石碇集順廟_完整系統備份與同步檔_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    showToast("✅ 已成功匯出完整備份檔 (JSON)！可傳至手機匯入同步。");
+  };
+
+  // 一鍵複製手機同步代碼 (傳到 LINE 或雲端，手機貼上即可秒同步)
+  const handleCopySyncCode = () => {
+    const backupData = {
+      app: 'shiding_temple_system',
+      version: '3.0',
+      exportedAt: new Date().toISOString(),
+      directors,
+      products,
+      puduDevotees,
+      lightingDevotees
+    };
+    const codeStr = JSON.stringify(backupData);
+    const fallbackCopy = text => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast("📋 已複製同步代碼！請用 LINE 傳到手機，貼上即可一鍵同步！");
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(codeStr).then(() => {
+        showToast("📋 已複製同步代碼！請用 LINE 傳到手機，貼上即可一鍵同步！");
+      }).catch(() => {
+        fallbackCopy(codeStr);
+      });
+    } else {
+      fallbackCopy(codeStr);
+    }
+  };
+
+  // 套用手機同步代碼
+  const handleApplySyncCode = () => {
+    const str = String(syncCodeInput || '').trim();
+    if (!str) return alert("請先在下方輸入框貼上從電腦複製的同步代碼！");
+    try {
+      const data = JSON.parse(str);
+      if (!data || (!data.puduDevotees && !data.lightingDevotees && !data.directors)) {
+        return alert("同步代碼格式錯誤，請確認複製的是完整的石碇集順廟同步代碼！");
+      }
+      if (data.directors && Array.isArray(data.directors)) {
+        setDirectors(data.directors);
+      }
+      if (data.products && Array.isArray(data.products)) {
+        setProducts(data.products);
+      }
+      if (data.puduDevotees && Array.isArray(data.puduDevotees)) {
+        setPuduDevotees(sortDevoteesById(data.puduDevotees.map(sanitizeDevotee)));
+      }
+      if (data.lightingDevotees && Array.isArray(data.lightingDevotees)) {
+        setLightingDevotees(sortDevoteesById(data.lightingDevotees.map(sanitizeDevotee)));
+      }
+      setSyncCodeInput('');
+      if (window.confetti) window.confetti({
+        particleCount: 80,
+        spread: 60
+      });
+      showToast("🎉 恭喜！跨裝置同步成功，理事與信眾名冊已全部更新！");
+    } catch (err) {
+      console.error("同步代碼解析失敗:", err);
+      alert("同步代碼解析失敗，請確認代碼是否完整複製無缺漏。");
+    }
+  };
+
+  // 匯入完整 JSON 系統備份檔
+  const handleImportJSON = e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = event => {
+      try {
+        const data = JSON.parse(event.target.result);
+        if (!data || (!data.puduDevotees && !data.lightingDevotees && !data.directors)) {
+          alert("備份檔格式不符，請確認是石碇集順廟系統匯出的 .json 檔案。");
+          e.target.value = null;
+          return;
+        }
+        if (data.directors && Array.isArray(data.directors)) {
+          setDirectors(data.directors);
+        }
+        if (data.products && Array.isArray(data.products)) {
+          setProducts(data.products);
+        }
+        if (data.puduDevotees && Array.isArray(data.puduDevotees)) {
+          setPuduDevotees(sortDevoteesById(data.puduDevotees.map(sanitizeDevotee)));
+        }
+        if (data.lightingDevotees && Array.isArray(data.lightingDevotees)) {
+          setLightingDevotees(sortDevoteesById(data.lightingDevotees.map(sanitizeDevotee)));
+        }
+        if (window.confetti) window.confetti({
+          particleCount: 80,
+          spread: 60
+        });
+        showToast("🎉 備份檔匯入成功！手機與電腦已完全同步！");
+      } catch (err) {
+        console.error("JSON 匯入失敗:", err);
+        alert("讀取備份檔失敗，請確認檔案格式是否正確。");
+      }
+      e.target.value = null;
+    };
+    reader.readAsText(file);
+  };
+
   // 匯出 CSV / Excel
   const handleExportCSV = () => {
     const rows = devotees.map(d => {
@@ -1368,6 +1547,7 @@ const App = () => {
         }
         let counter = 1;
         const importedList = [];
+        let updatedDirectors = [...directors];
         rows.forEach(rawRow => {
           if (!rawRow || typeof rawRow !== 'object') return;
           const row = {};
@@ -1393,8 +1573,22 @@ const App = () => {
           let assignedTo = '';
           const assignedName = String(row['負責理事'] || row['理事'] || row['轄區'] || row['幹部'] || '').trim();
           if (assignedName) {
-            const matchedDir = directors.find(d => d.name.includes(assignedName) || d.id === assignedName || d.area.includes(assignedName));
-            if (matchedDir) assignedTo = matchedDir.id;else assignedTo = assignedName;
+            let matchedDir = updatedDirectors.find(d => d.name === assignedName || d.name.includes(assignedName) || d.id === assignedName || d.area.includes(assignedName));
+            if (!matchedDir) {
+              let maxNum = 0;
+              updatedDirectors.forEach(d => {
+                const num = parseInt(String(d.id || '').replace(/[^0-9]/g, ''), 10);
+                if (!isNaN(num) && num > maxNum) maxNum = num;
+              });
+              matchedDir = {
+                id: `D${maxNum + 1}`,
+                name: formatDirectorName(assignedName, updatedDirectors),
+                area: '石碇區',
+                phone: ''
+              };
+              updatedDirectors.push(matchedDir);
+            }
+            assignedTo = matchedDir.id;
           }
           const parseStatus = val => {
             const s = String(val || '').trim();
@@ -1441,6 +1635,9 @@ const App = () => {
           alert("未成功解析到任何包含「姓名」的信眾資料，請檢查試算表欄位！");
           e.target.value = null;
           return;
+        }
+        if (updatedDirectors.length > directors.length) {
+          setDirectors(updatedDirectors);
         }
         const finalSortedList = sortDevoteesById(importedList);
         setDevotees(finalSortedList);
@@ -2251,6 +2448,76 @@ const App = () => {
   }, /*#__PURE__*/React.createElement("span", {
     className: "w-2 h-2 rounded-full bg-emerald-500 animate-ping"
   }), /*#__PURE__*/React.createElement("span", null, "\u6B63\u5E38\u904B\u4F5C"))))), /*#__PURE__*/React.createElement("div", {
+    className: "bg-gradient-to-br from-orange-50 via-white to-amber-50 rounded-2xl p-4 sm:p-6 shadow-sm border-2 border-orange-200 space-y-4"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3 border-b border-orange-100 pb-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "p-2.5 bg-orange-600 text-white rounded-xl shadow-md shadow-orange-600/20"
+  }, /*#__PURE__*/React.createElement(Icons.Smartphone, null)), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 flex-wrap"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-base sm:text-lg font-black text-orange-950"
+  }, "\u624B\u6A5F\u8207\u96FB\u8166\u8DE8\u88DD\u7F6E\u540C\u6B65\u4E2D\u5FC3"), /*#__PURE__*/React.createElement("span", {
+    className: "px-2 py-0.5 bg-orange-200 text-orange-800 text-[10px] font-black rounded-full"
+  }, "\u5373\u6642\u540C\u6B65\u7406\u4E8B(\u542B\u738B\u601D\u5A77)\u8207\u4FE1\u773E\u540D\u518A")), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-orange-800/80 mt-0.5"
+  }, "\u96FB\u8166\u7AEF\u8A2D\u5B9A\u597D\u7406\u4E8B\u8207\u540D\u518A\u5F8C\uFF0C\u900F\u904E\u4EE5\u4E0B\u4EFB\u4E00\u65B9\u5F0F\uFF0C\u624B\u6A5F\u7AEF 3 \u79D2\u7ACB\u5373\u5B8C\u5168\u540C\u6B65\uFF01"))), /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-xl p-3.5 sm:p-4 border border-orange-100 shadow-2xs space-y-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-6 h-6 rounded-full bg-orange-600 text-white flex items-center justify-center text-xs font-black"
+  }, "1"), /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-bold text-slate-800"
+  }, "\u65B9\u6CD5\u4E00\uFF1A\u4F7F\u7528 LINE \u50B3\u9001\u540C\u6B65\u4EE3\u78BC (\u6700\u63A8\u85A6\uFF0C\u514D\u50B3\u6A94\u6848)")), /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] text-orange-600 font-bold bg-orange-50 px-2 py-0.5 rounded-lg border border-orange-200"
+  }, "\u6700\u7C21\u55AE\u5FEB\u901F")), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500"
+  }, "\u5728\u3010\u96FB\u8166\u7AEF\u3011\u9EDE\u64CA\u300C\u8907\u88FD\u540C\u6B65\u4EE3\u78BC\u300D\u50B3\u5230 LINE\uFF1B\u5728\u3010\u624B\u6A5F\u7AEF\u3011\u6253\u958B\u7DB2\u9801\u4E26\u5728\u4E0B\u65B9\u8CBC\u4E0A\u4EE3\u78BC\uFF0C\u9EDE\u64CA\u300C\u4E00\u9375\u540C\u6B65\u300D\u5373\u53EF\u3002"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col sm:flex-row gap-2 pt-1"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: handleCopySyncCode,
+    className: "bg-orange-600 hover:bg-orange-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-md shadow-orange-600/20 active:scale-95 transition-all"
+  }, /*#__PURE__*/React.createElement(Icons.Copy, null), /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCBB \u96FB\u8166\u7AEF\u9EDE\u6B64\uFF1A\u4E00\u9375\u8907\u88FD\u540C\u6B65\u4EE3\u78BC"))), /*#__PURE__*/React.createElement("div", {
+    className: "pt-2 border-t border-slate-100"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "block text-xs font-bold text-slate-700 mb-1.5"
+  }, "\uD83D\uDCF1 \u624B\u6A5F\u7AEF\u8CBC\u4E0A\u540C\u6B65\u4EE3\u78BC\uFF1A"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: syncCodeInput,
+    onChange: e => setSyncCodeInput(e.target.value),
+    placeholder: "\u5728\u6B64\u9577\u6309\u8CBC\u4E0A\u5F9E\u96FB\u8166\u8907\u88FD\u7684\u540C\u6B65\u4EE3\u78BC...",
+    className: "flex-1 px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none"
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: handleApplySyncCode,
+    className: "bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1 shadow-md shadow-emerald-600/20 shrink-0 active:scale-95 transition-all"
+  }, /*#__PURE__*/React.createElement(Icons.Sparkles, null), /*#__PURE__*/React.createElement("span", null, "\u26A1 \u4E00\u9375\u5957\u7528\u540C\u6B65"))))), /*#__PURE__*/React.createElement("div", {
+    className: "bg-white rounded-xl p-3.5 sm:p-4 border border-orange-100 shadow-2xs space-y-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-6 h-6 rounded-full bg-slate-700 text-white flex items-center justify-center text-xs font-black"
+  }, "2"), /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-bold text-slate-800"
+  }, "\u65B9\u6CD5\u4E8C\uFF1A\u4F7F\u7528\u5B8C\u6574\u5099\u4EFD\u6A94 (.json) \u50B3\u8F38")), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-slate-500"
+  }, "\u5305\u542B\u5168\u9AD4\u7406\u4E8B\u6E05\u55AE\u3001\u4E2D\u5143\u666E\u6E21\u8207\u65B0\u6625\u9EDE\u71C8\u5168\u9AD4\u540D\u518A\u53CA\u7E73\u8CBB\u72C0\u614B\u3002\u53EF\u5728\u96FB\u8166\u532F\u51FA\u5F8C\u900F\u904E AirDrop\u3001Email \u6216\u96F2\u7AEF\u786C\u789F\u50B3\u81F3\u624B\u6A5F\u532F\u5165\u3002"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap gap-2 pt-1"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: handleExportJSON,
+    className: "bg-slate-800 hover:bg-slate-900 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+  }, /*#__PURE__*/React.createElement(Icons.Download, null), /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCE5 \u96FB\u8166\u7AEF\uFF1A\u532F\u51FA\u5B8C\u6574\u5099\u4EFD\u6A94 (.json)")), /*#__PURE__*/React.createElement("label", {
+    className: "inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs shadow-sm cursor-pointer active:scale-95 transition-all"
+  }, /*#__PURE__*/React.createElement(Icons.Upload, null), /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCE4 \u624B\u6A5F\u7AEF\uFF1A\u9078\u64C7\u5099\u4EFD\u6A94\u532F\u5165"), /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    accept: ".json",
+    onChange: handleImportJSON,
+    className: "hidden"
+  }))))), /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-200 space-y-3"
   }, /*#__PURE__*/React.createElement("h3", {
     className: "text-base font-bold text-slate-900 flex items-center gap-2"
