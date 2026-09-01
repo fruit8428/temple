@@ -2,3 +2,6 @@
 *~lock~
 *.pyc
 __pycache__/
+.vercel
+*.numbers
+temp_*
