@@ -234,19 +234,20 @@
                 line-height: 1.6;
             }
             .seal-box {
-                width: 72px;
-                height: 72px;
+                width: 78px;
+                height: 78px;
                 border: 3px solid #dc2626 !important;
                 color: #dc2626 !important;
                 font-weight: 900;
-                font-size: 13px;
+                font-size: 11px;
                 display: flex;
+                flex-direction: column;
                 align-items: center;
                 justify-content: center;
                 text-align: center;
                 border-radius: 6px;
                 transform: rotate(-5deg);
-                line-height: 1.2;
+                line-height: 1.25;
             }
         }
     </style>
@@ -1745,7 +1746,10 @@ const App = () => {
                         <div style="margin-top: 6px;">經手負責理事：<span style="font-weight: bold; text-decoration: underline;"> ${directorName} </span> (款項已收訖)</div>
                     </div>
                     <div class="seal-box">
-                        石碇集順廟<br/>管理處印
+                        <div>石碇</div>
+                        <div>明德宮</div>
+                        <div>集順廟</div>
+                        <div>管理處印</div>
                     </div>
                 </div>
             </div>
@@ -3871,8 +3875,8 @@ const App = () => {
   }, "\u65B0\u53F0\u5E63 $", calculateDevoteeAllTotal(receiptDevotee).toLocaleString(), " \u5143\u6574")), /*#__PURE__*/React.createElement("div", {
     className: "pt-3 border-t border-red-700/60 flex justify-between items-end text-xs text-slate-600"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", null, "\u958B\u7ACB\u65E5\u671F\uFF1A", new Date().toLocaleDateString('zh-TW')), /*#__PURE__*/React.createElement("div", null, "\u7D93\u624B\u8CA0\u8CAC\u7406\u4E8B\uFF1A", formatDirectorName(receiptDevotee.assignedTo, directors) || '廟方總管')), /*#__PURE__*/React.createElement("div", {
-    className: "w-12 h-12 sm:w-14 sm:h-14 border-2 border-red-600 rounded-lg flex items-center justify-center text-red-600 font-black text-center text-[10px] sm:text-xs p-1 tracking-tighter transform -rotate-6"
-  }, "\u77F3\u7887\u96C6\u9806\u5EDF", /*#__PURE__*/React.createElement("br", null), "\u7BA1\u7406\u8655\u5370")))), /*#__PURE__*/React.createElement("div", {
+    className: "w-14 h-14 sm:w-16 sm:h-16 border-2 border-red-600 rounded-lg flex flex-col items-center justify-center text-red-600 font-black text-center text-[9px] sm:text-[10px] p-0.5 leading-tight tracking-tight transform -rotate-6 shrink-0"
+  }, /*#__PURE__*/React.createElement("div", null, "石碇"), /*#__PURE__*/React.createElement("div", null, "明德宮"), /*#__PURE__*/React.createElement("div", null, "集順廟"), /*#__PURE__*/React.createElement("div", null, "管理處印"))))), /*#__PURE__*/React.createElement("div", {
     className: "p-3.5 sm:p-4 bg-slate-50 border-t border-slate-100 flex gap-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => handlePrintSingleReceipt(receiptDevotee),
