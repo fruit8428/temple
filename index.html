@@ -631,6 +631,23 @@ const sanitizeDevotee = (d = {}, index = 1) => {
       qty: Math.max(1, parseInt(f.qty, 10) || 1)
     };
   }).filter(Boolean) : [];
+  let familyLights = Array.isArray(d.familyLights) ? d.familyLights.map((f, i) => {
+    if (!f || typeof f !== 'object') return null;
+    const fName = String(f.name || '').trim();
+    if (!fName) return null;
+    let fItems = Array.isArray(f.items) ? f.items.map(it => {
+      if (!it || typeof it !== 'object' || !it.id) return null;
+      return {
+        id: String(it.id),
+        qty: Math.max(1, parseInt(it.qty, 10) || 1)
+      };
+    }).filter(Boolean) : [];
+    return {
+      id: String(f.id || `faml_${Date.now()}_${i}`),
+      name: fName,
+      items: fItems
+    };
+  }).filter(Boolean) : [];
   const parseStatus = val => {
     const s = String(val || '').trim();
     if (s.includes('結案') || s.includes('入庫') || s === 'remitted') return 'remitted';
@@ -649,6 +666,7 @@ const sanitizeDevotee = (d = {}, index = 1) => {
     lightingStatus: parseStatus(d.lightingStatus || d['點燈狀態']),
     items,
     familyRice,
+    familyLights,
     notes: String(d.notes || d['備註事項'] || d['備註'] || '').trim(),
     createdAt: d.createdAt || new Date().toISOString()
   };
@@ -973,6 +991,9 @@ const App = () => {
   const [editingFamilyRice, setEditingFamilyRice] = useState([]);
   const [newFamilyName, setNewFamilyName] = useState('');
   const [newFamilyRiceQty, setNewFamilyRiceQty] = useState(1);
+  const [editingFamilyLights, setEditingFamilyLights] = useState([]);
+  const [newFamilyLightName, setNewFamilyLightName] = useState('');
+  const [newFamilySelectedLamps, setNewFamilySelectedLamps] = useState({});
   const [isAddDevoteeModalOpen, setIsAddDevoteeModalOpen] = useState(false);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [receiptDevotee, setReceiptDevotee] = useState(null);
@@ -1188,12 +1209,14 @@ const App = () => {
       console.error("自動存檔失敗:", e);
     }
   }, [puduDevotees, lightingDevotees, products, directors, isLoaded]);
-  const calculateDevoteeTotal = (itemsOrDevotee = [], mode = activityMode, familyRiceParam = []) => {
+  const calculateDevoteeTotal = (itemsOrDevotee = [], mode = activityMode, familyRiceParam = [], familyLightsParam = []) => {
     let items = [];
     let familyRice = familyRiceParam;
+    let familyLights = familyLightsParam;
     if (itemsOrDevotee && typeof itemsOrDevotee === 'object' && !Array.isArray(itemsOrDevotee)) {
       items = itemsOrDevotee.items || [];
       familyRice = itemsOrDevotee.familyRice || [];
+      familyLights = itemsOrDevotee.familyLights || [];
     } else if (Array.isArray(itemsOrDevotee)) {
       items = itemsOrDevotee;
     }
@@ -1212,14 +1235,26 @@ const App = () => {
         return acc + ricePrice * (parseInt(f.qty, 10) || 1);
       }, 0);
     }
+    if (mode === 'lighting' && Array.isArray(familyLights)) {
+      familyLights.forEach(fam => {
+        (fam.items || []).forEach(it => {
+          const prod = products.find(p => p.id === it.id);
+          if (prod && prod.category === 'lighting') {
+            sum += prod.price * (parseInt(it.qty, 10) || 1);
+          }
+        });
+      });
+    }
     return sum;
   };
-  const calculateDevoteeAllTotal = (itemsOrDevotee = [], familyRiceParam = []) => {
+  const calculateDevoteeAllTotal = (itemsOrDevotee = [], familyRiceParam = [], familyLightsParam = []) => {
     let items = [];
     let familyRice = familyRiceParam;
+    let familyLights = familyLightsParam;
     if (itemsOrDevotee && typeof itemsOrDevotee === 'object' && !Array.isArray(itemsOrDevotee)) {
       items = itemsOrDevotee.items || [];
       familyRice = itemsOrDevotee.familyRice || [];
+      familyLights = itemsOrDevotee.familyLights || [];
     } else if (Array.isArray(itemsOrDevotee)) {
       items = itemsOrDevotee;
     }
@@ -1234,6 +1269,16 @@ const App = () => {
       sum += familyRice.reduce((acc, f) => {
         return acc + ricePrice * (parseInt(f.qty, 10) || 1);
       }, 0);
+    }
+    if (Array.isArray(familyLights)) {
+      familyLights.forEach(fam => {
+        (fam.items || []).forEach(it => {
+          const prod = products.find(p => p.id === it.id);
+          if (prod) {
+            sum += prod.price * (parseInt(it.qty, 10) || 1);
+          }
+        });
+      });
     }
     return sum;
   };
@@ -1259,8 +1304,9 @@ const App = () => {
         const matchPhone = d.phone.toLowerCase().includes(q);
         const matchAddr = d.address.toLowerCase().includes(q);
         const matchId = d.id.toLowerCase().includes(q);
-        const matchFamily = Array.isArray(d.familyRice) && d.familyRice.some(f => f.name.toLowerCase().includes(q));
-        return matchName || matchPhone || matchAddr || matchId || matchFamily;
+        const matchFamilyRice = Array.isArray(d.familyRice) && d.familyRice.some(f => f.name.toLowerCase().includes(q));
+        const matchFamilyLight = Array.isArray(d.familyLights) && d.familyLights.some(f => f.name.toLowerCase().includes(q));
+        return matchName || matchPhone || matchAddr || matchId || matchFamilyRice || matchFamilyLight;
       }
       return true;
     });
@@ -1327,6 +1373,15 @@ const App = () => {
             totalQty += parseInt(f.qty, 10) || 1;
           });
         }
+        if (activityMode === 'lighting' && Array.isArray(d.familyLights)) {
+          d.familyLights.forEach(f => {
+            (f.items || []).forEach(fit => {
+              if (fit.id === prod.id) {
+                totalQty += parseInt(fit.qty, 10) || 1;
+              }
+            });
+          });
+        }
       });
       return {
         id: prod.id,
@@ -1356,8 +1411,11 @@ const App = () => {
     setActiveDevoteeModal(devotee);
     setEditingItems(JSON.parse(JSON.stringify(devotee.items || [])));
     setEditingFamilyRice(JSON.parse(JSON.stringify(devotee.familyRice || [])));
+    setEditingFamilyLights(JSON.parse(JSON.stringify(devotee.familyLights || [])));
     setNewFamilyName('');
     setNewFamilyRiceQty(1);
+    setNewFamilyLightName('');
+    setNewFamilySelectedLamps({});
   };
   const handleUpdateItemQty = (prodId, delta) => {
     setEditingItems(prev => {
@@ -1413,6 +1471,83 @@ const App = () => {
   const handleRemoveFamilyMember = famId => {
     setEditingFamilyRice(prev => prev.filter(f => f.id !== famId));
   };
+  const handleAddFamilyLightMember = () => {
+    const trimmed = newFamilyLightName.trim();
+    if (!trimmed) {
+      alert("請輸入家人姓名！");
+      return;
+    }
+    const selectedItems = Object.entries(newFamilySelectedLamps)
+      .filter(([_, q]) => q > 0)
+      .map(([id, qty]) => ({ id, qty: Math.max(1, parseInt(qty, 10) || 1) }));
+    if (selectedItems.length === 0) {
+      alert("請至少選擇一項要點的平安/文昌/太歲祈福燈！");
+      return;
+    }
+    setEditingFamilyLights(prev => {
+      const existingIdx = prev.findIndex(f => f.name === trimmed);
+      if (existingIdx !== -1) {
+        return prev.map((f, idx) => {
+          if (idx !== existingIdx) return f;
+          let updatedItems = [...(f.items || [])];
+          selectedItems.forEach(s => {
+            const cur = updatedItems.find(i => i.id === s.id);
+            if (cur) {
+              cur.qty += s.qty;
+            } else {
+              updatedItems.push({ id: s.id, qty: s.qty });
+            }
+          });
+          return { ...f, items: updatedItems };
+        });
+      } else {
+        const newMember = {
+          id: `faml_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          name: trimmed,
+          items: selectedItems
+        };
+        return [...prev, newMember];
+      }
+    });
+    setNewFamilyLightName('');
+    setNewFamilySelectedLamps({});
+  };
+  const handleUpdateFamilyLightItemQty = (famId, prodId, delta) => {
+    setEditingFamilyLights(prev => {
+      return prev.map(f => {
+        if (f.id !== famId) return f;
+        let updatedItems = (f.items || []).map(it => {
+          if (it.id === prodId) {
+            return { ...it, qty: it.qty + delta };
+          }
+          return it;
+        }).filter(it => it.qty > 0);
+        return { ...f, items: updatedItems };
+      }).filter(f => (f.items && f.items.length > 0));
+    });
+  };
+  const handleAddLampToFamilyMember = (famId, prodId) => {
+    setEditingFamilyLights(prev => {
+      return prev.map(f => {
+        if (f.id !== famId) return f;
+        const cur = (f.items || []).find(i => i.id === prodId);
+        if (cur) {
+          return {
+            ...f,
+            items: f.items.map(i => i.id === prodId ? { ...i, qty: i.qty + 1 } : i)
+          };
+        } else {
+          return {
+            ...f,
+            items: [...(f.items || []), { id: prodId, qty: 1 }]
+          };
+        }
+      });
+    });
+  };
+  const handleRemoveFamilyLightMember = famId => {
+    setEditingFamilyLights(prev => prev.filter(f => f.id !== famId));
+  };
   const confirmPaymentAction = devoteeId => {
     const statusKey = `${activityMode}Status`;
     setDevotees(prev => prev.map(d => {
@@ -1421,7 +1556,8 @@ const App = () => {
           ...d,
           [statusKey]: 'collected',
           items: editingItems,
-          familyRice: editingFamilyRice
+          familyRice: editingFamilyRice,
+          familyLights: editingFamilyLights
         };
       }
       return d;
@@ -1446,7 +1582,8 @@ const App = () => {
           ...d,
           [statusKey]: 'remitted',
           items: editingItems,
-          familyRice: editingFamilyRice
+          familyRice: editingFamilyRice,
+          familyLights: editingFamilyLights
         };
       }
       return d;
@@ -1462,7 +1599,8 @@ const App = () => {
           ...d,
           [statusKey]: 'unpaid',
           items: editingItems,
-          familyRice: editingFamilyRice
+          familyRice: editingFamilyRice,
+          familyLights: editingFamilyLights
         };
       }
       return d;
@@ -1476,7 +1614,8 @@ const App = () => {
         return {
           ...d,
           items: editingItems,
-          familyRice: editingFamilyRice
+          familyRice: editingFamilyRice,
+          familyLights: editingFamilyLights
         };
       }
       return d;
@@ -1491,7 +1630,8 @@ const App = () => {
           return {
             ...d,
             items: editingItems,
-            familyRice: editingFamilyRice
+            familyRice: editingFamilyRice,
+            familyLights: editingFamilyLights
           };
         }
         return d;
@@ -1537,6 +1677,20 @@ const App = () => {
                     <span>$${(ricePrice * f.qty).toLocaleString()} 元</span>
                 </div>
             `;
+      });
+    }
+    if (Array.isArray(devotee.familyLights)) {
+      devotee.familyLights.forEach(fam => {
+        (fam.items || []).forEach(fit => {
+          const p = products.find(prod => prod.id === fit.id);
+          const price = p ? p.price : 0;
+          itemsHtml += `
+                <div class="item-row">
+                    <span>${p ? p.name : fit.id}（家人：${fam.name}） x ${fit.qty} 盞</span>
+                    <span>$${(price * fit.qty).toLocaleString()} 元</span>
+                </div>
+            `;
+        });
       });
     }
     printArea.innerHTML = `
@@ -1763,8 +1917,27 @@ const App = () => {
         const famRiceStr = d.familyRice.map(f => `${f.name}(${f.qty}包)`).join('、');
         itemsStr += (itemsStr ? '; ' : '') + `家人平安大米: ${famRiceStr}`;
       }
+      if (Array.isArray(d.familyLights) && d.familyLights.length > 0) {
+        const famLightStr = d.familyLights.map(f => {
+          const lNames = (f.items || []).map(it => {
+            const prod = products.find(p => p.id === it.id);
+            return `${prod ? prod.name : it.id}x${it.qty}`;
+          }).join(',');
+          return `${f.name}(${lNames})`;
+        }).join('、');
+        itemsStr += (itemsStr ? '; ' : '') + `家人點燈: ${famLightStr}`;
+      }
       const famRiceCol = Array.isArray(d.familyRice) && d.familyRice.length > 0
         ? d.familyRice.map(f => `${f.name}: ${f.qty}包`).join('; ')
+        : '';
+      const famLightCol = Array.isArray(d.familyLights) && d.familyLights.length > 0
+        ? d.familyLights.map(f => {
+            const lNames = (f.items || []).map(it => {
+              const prod = products.find(p => p.id === it.id);
+              return `${prod ? prod.name : it.id}x${it.qty}`;
+            }).join(',');
+            return `${f.name}: ${lNames}`;
+          }).join('; ')
         : '';
       return {
         '信眾編號': d.id,
@@ -1782,6 +1955,7 @@ const App = () => {
         '總應繳金額': puduSum + lightSum,
         '報名明細項目': itemsStr,
         '家人買米明細': famRiceCol,
+        '家人點燈明細': famLightCol,
         '備註事項': d.notes || ''
       };
     });
@@ -1843,45 +2017,39 @@ const App = () => {
           const name = String(row['姓名'] || row['信徒'] || row['信眾姓名'] || '').trim();
           const phone = String(row['聯絡電話'] || row['電話'] || row['手機'] || '').trim();
           const address = String(row['通訊地址'] || row['地址'] || row['住址'] || '').trim();
-          const birthday = standardizeLunarBirthday(row['農曆生辰'] || row['農曆生日'] || row['生日'] || row['生辰']);
-          const notes = String(row['備註事項'] || row['備註'] || '').trim();
-          const assignedName = String(row['負責理事'] || row['理事'] || '').trim();
+          const birthday = String(row['農曆生辰'] || row['農曆生日'] || row['生日'] || row['生辰'] || '').trim();
           let assignedTo = '';
-          if (assignedName) {
-            let matchedDir = updatedDirectors.find(dir => dir.name === assignedName || dir.id === assignedName || assignedName.includes(dir.name));
-            if (!matchedDir) {
-              const maxNum = updatedDirectors.reduce((max, d) => {
-                const n = parseInt(d.id.replace('D', ''), 10);
-                return !isNaN(n) && n > max ? n : max;
-              }, 0);
-              matchedDir = {
-                id: `D${maxNum + 1}`,
-                name: formatDirectorName(assignedName, updatedDirectors),
-                area: '石碇區',
+          const dirRaw = String(row['負責理事'] || row['責任理事'] || row['理事'] || '').trim();
+          if (dirRaw) {
+            const foundDir = directors.find(d => d.id === dirRaw || d.name === dirRaw || dirRaw.includes(d.name) || d.name.includes(dirRaw));
+            if (foundDir) {
+              assignedTo = foundDir.id;
+            } else {
+              const newDirId = `D${updatedDirectors.length}`;
+              const newDirName = dirRaw.slice(0, 3);
+              const newDirObj = {
+                id: newDirId,
+                name: newDirName,
+                area: '匯入新增轄區',
                 phone: ''
               };
-              updatedDirectors.push(matchedDir);
+              updatedDirectors.push(newDirObj);
+              assignedTo = newDirId;
             }
-            assignedTo = matchedDir.id;
           }
-          const parseStatus = val => {
-            const s = String(val || '').trim();
-            if (s.includes('結案') || s.includes('入庫') || s === 'remitted') return 'remitted';
-            if (s.includes('已收') || s.includes('已繳') || s === 'collected') return 'collected';
-            return 'unpaid';
-          };
-          const puduStatus = parseStatus(row['普渡狀態'] || row['中元普渡狀態'] || row['普渡繳費']);
-          const lightingStatus = parseStatus(row['點燈狀態'] || row['新春點燈狀態'] || row['點燈繳費']);
+          const puduStatus = String(row['普渡狀態'] || '').includes('結案') || String(row['普渡狀態'] || '').includes('入庫') ? 'remitted' : String(row['普渡狀態'] || '').includes('已收') || String(row['普渡狀態'] || '').includes('已繳') ? 'collected' : 'unpaid';
+          const lightingStatus = String(row['點燈狀態'] || '').includes('結案') || String(row['點燈狀態'] || '').includes('入庫') ? 'remitted' : String(row['點燈狀態'] || '').includes('已收') || String(row['點燈狀態'] || '').includes('已繳') ? 'collected' : 'unpaid';
+          const notes = String(row['備註事項'] || row['備註'] || '').trim();
+          const itemsRaw = String(row['報名明細項目'] || row['項目明細'] || row['項目'] || '').trim();
           let items = [];
-          const rawItemsStr = String(row['報名明細項目'] || row['明細'] || row['品項'] || row['項目'] || '').trim();
-          if (rawItemsStr) {
-            const parts = rawItemsStr.split(/[;,；，]/);
-            parts.forEach(p => {
-              const itemStr = p.trim();
-              if (!itemStr) return;
-              const qtyMatch = itemStr.match(/[xX*×]\s*(\d+)/) || itemStr.match(/(\d+)\s*(份|包|盞|個)?$/);
-              const qty = qtyMatch ? parseInt(qtyMatch[1], 10) : 1;
-              const matchedProd = products.find(pr => itemStr.includes(pr.name) || itemStr.includes(pr.id));
+          if (itemsRaw) {
+            const parts = itemsRaw.split(/[;,；]/);
+            parts.forEach(part => {
+              const trimmedPart = part.trim();
+              if (!trimmedPart || trimmedPart.includes('家人平安大米') || trimmedPart.includes('家人點燈')) return;
+              const qm = trimmedPart.match(/x(\d+)/i) || trimmedPart.match(/(\d+)份/i) || trimmedPart.match(/(\d+)包/i) || trimmedPart.match(/(\d+)盞/i);
+              const qty = qm ? parseInt(qm[1], 10) : 1;
+              const matchedProd = products.find(p => trimmedPart.includes(p.name) || trimmedPart.includes(p.id));
               if (matchedProd) {
                 items.push({
                   id: matchedProd.id,
@@ -1905,6 +2073,46 @@ const App = () => {
               }
             });
           }
+          let familyLights = [];
+          const rawLightStr = String(row['家人點燈明細'] || row['家人點燈'] || row['家人燈'] || '').trim();
+          if (rawLightStr) {
+            const lParts = rawLightStr.split(/[;；]/);
+            lParts.forEach((lp, idx) => {
+              const part = lp.trim();
+              if (!part) return;
+              const colonIdx = part.indexOf(':') !== -1 ? part.indexOf(':') : part.indexOf('：');
+              let famName = part;
+              let itemsText = '';
+              if (colonIdx !== -1) {
+                famName = part.slice(0, colonIdx).trim();
+                itemsText = part.slice(colonIdx + 1).trim();
+              }
+              if (!famName) return;
+              let famItems = [];
+              if (itemsText) {
+                const subParts = itemsText.split(/[,，、]/);
+                subParts.forEach(sp => {
+                  const s = sp.trim();
+                  if (!s) return;
+                  const qm = s.match(/[x*×:：(（]?\s*(\d+)\s*(盞|份|燈|\)|）)?$/i);
+                  const q = qm ? parseInt(qm[1], 10) : 1;
+                  const itemPureName = s.replace(/[x*×:：(（]?\s*\d+\s*(盞|份|燈|\)|）)?$/i, '').trim();
+                  const matchedProd = products.find(p => p.category === 'lighting' && (itemPureName.includes(p.name) || p.name.includes(itemPureName) || itemPureName.includes(p.id)));
+                  if (matchedProd) {
+                    famItems.push({ id: matchedProd.id, qty: q });
+                  }
+                });
+              }
+              if (famItems.length === 0) {
+                famItems.push({ id: 'personal', qty: 1 });
+              }
+              familyLights.push({
+                id: `faml_imp_${Date.now()}_${idx}`,
+                name: famName,
+                items: famItems
+              });
+            });
+          }
           const devoteeRecord = sanitizeDevotee({
             id: finalId,
             name,
@@ -1916,6 +2124,7 @@ const App = () => {
             lightingStatus,
             items,
             familyRice,
+            familyLights,
             notes,
             createdAt: new Date().toISOString()
           }, counter);
@@ -2322,7 +2531,12 @@ const App = () => {
       className: "text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200 inline-flex items-center gap-1 font-medium"
     }, /*#__PURE__*/React.createElement("span", null, "👨‍👩‍👧"), /*#__PURE__*/React.createElement("span", null, `家人米 ${d.familyRice.reduce((s, f) => s + (parseInt(f.qty, 10) || 1), 0)}包`), /*#__PURE__*/React.createElement("span", {
       className: "text-slate-400"
-    }, `(${d.familyRice.map(f => f.name).join('、')})`))), /*#__PURE__*/React.createElement("div", null, renderStatusBadge(currentStatus))), /*#__PURE__*/React.createElement("div", {
+    }, `(${d.familyRice.map(f => f.name).join('、')})`)), activityMode === 'lighting' && Array.isArray(d.familyLights) && d.familyLights.length > 0 && /*#__PURE__*/React.createElement("div", {
+      className: "text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200 inline-flex items-center gap-1 font-medium",
+      title: d.familyLights.map(f => `${f.name}: ${(f.items || []).map(it => { const p = products.find(prod => prod.id === it.id); return `${p ? p.name : it.id}x${it.qty}`; }).join('、')}`).join('； ')
+    }, /*#__PURE__*/React.createElement("span", null, "👨‍👩‍👧"), /*#__PURE__*/React.createElement("span", null, `家人燈 ${d.familyLights.reduce((s, f) => s + (f.items || []).reduce((is, it) => is + (parseInt(it.qty, 10) || 1), 0), 0)}盞`), /*#__PURE__*/React.createElement("span", {
+      className: "text-slate-400"
+    }, `(${d.familyLights.map(f => f.name).join('、')})`))), /*#__PURE__*/React.createElement("div", null, renderStatusBadge(currentStatus))), /*#__PURE__*/React.createElement("div", {
       className: "space-y-1 text-xs text-slate-600 bg-slate-50/80 p-2.5 rounded-xl border border-slate-100"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex justify-between items-center"
@@ -2367,9 +2581,9 @@ const App = () => {
         });
         setIsAddDevoteeModalOpen(true);
       },
-      className: "p-2 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs",
-      title: "\u7DE8\u8F2F"
-    }, /*#__PURE__*/React.createElement(Icons.Edit, null)), /*#__PURE__*/React.createElement("button", {
+      className: "p-1.5 text-slate-400 hover:text-slate-700 bg-white hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors",
+      title: "\u7DE8\u8F2F\u4FE1\u773E\u8CC7\u6599"
+    }, /*#__PURE__*/React.createElement(Icons.Pencil, null)), /*#__PURE__*/React.createElement("button", {
       onClick: () => openReceipt(d),
       className: "p-2 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl text-xs",
       title: "\u611F\u8B1D\u72C0"
@@ -2455,7 +2669,12 @@ const App = () => {
       title: d.familyRice.map(f => `${f.name}: ${f.qty}包`).join('、')
     }, /*#__PURE__*/React.createElement("span", null, "👨‍👩‍👧"), /*#__PURE__*/React.createElement("span", null, `家人米 ${d.familyRice.reduce((s, f) => s + (parseInt(f.qty, 10) || 1), 0)}包`), /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] text-amber-600 font-normal max-w-[140px] truncate"
-    }, `(${d.familyRice.map(f => f.name).join('、')})`))), /*#__PURE__*/React.createElement("td", {
+    }, `(${d.familyRice.map(f => f.name).join('、')})`)), activityMode === 'lighting' && Array.isArray(d.familyLights) && d.familyLights.length > 0 && /*#__PURE__*/React.createElement("div", {
+      className: "text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200/80 inline-flex items-center gap-1 font-medium mt-1 whitespace-nowrap",
+      title: d.familyLights.map(f => `${f.name}: ${(f.items || []).map(it => { const p = products.find(prod => prod.id === it.id); return `${p ? p.name : it.id}x${it.qty}`; }).join('、')}`).join('； ')
+    }, /*#__PURE__*/React.createElement("span", null, "👨‍👩‍👧"), /*#__PURE__*/React.createElement("span", null, `家人燈 ${d.familyLights.reduce((s, f) => s + (f.items || []).reduce((is, it) => is + (parseInt(it.qty, 10) || 1), 0), 0)}盞`), /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] text-amber-600 font-normal max-w-[140px] truncate"
+    }, `(${d.familyLights.map(f => f.name).join('、')})`))), /*#__PURE__*/React.createElement("td", {
       className: "p-3.5 font-mono text-xs text-slate-700"
     }, d.phone ? /*#__PURE__*/React.createElement("a", {
       href: `tel:${d.phone}`,
@@ -3038,7 +3257,11 @@ const App = () => {
       className: "font-bold text-slate-900 text-sm flex items-center gap-1.5"
     }, /*#__PURE__*/React.createElement("span", null, prod.name), activityMode === 'pudu' && isRice && /*#__PURE__*/React.createElement("span", {
       className: "text-[10px] bg-orange-100 text-orange-800 font-bold px-1.5 py-0.5 rounded"
-    }, "信眾本人")), /*#__PURE__*/React.createElement("div", {
+    }, prod.name), (activityMode === 'pudu' && isRice) ? /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] bg-orange-100 text-orange-800 font-bold px-1.5 py-0.5 rounded"
+    }, "信眾本人") : activityMode === 'lighting' ? /*#__PURE__*/React.createElement("span", {
+      className: "text-[10px] bg-orange-100 text-orange-800 font-bold px-1.5 py-0.5 rounded"
+    }, "信眾本人") : null), /*#__PURE__*/React.createElement("div", {
       className: "text-xs text-slate-400 mt-0.5"
     }, prod.desc), /*#__PURE__*/React.createElement("div", {
       className: "text-xs font-mono font-bold text-orange-600 mt-1"
@@ -3145,15 +3368,194 @@ const App = () => {
     }, /*#__PURE__*/React.createElement("span", null, "家人買米登記：共 ", editingFamilyRice.length, " 位家人"), /*#__PURE__*/React.createElement("span", {
       className: "font-bold text-orange-800 font-mono"
     }, "合計 ", totalFamilyBags, " 包 • $", familyRiceTotal.toLocaleString(), " 元")))) : null;
+  })(), (() => {
+    if (activityMode !== 'lighting') return null;
+    const lightingProducts = products.filter(p => p.category === 'lighting');
+    const totalFamilyLamps = editingFamilyLights.reduce((sum, f) => {
+      return sum + (f.items || []).reduce((is, it) => is + (parseInt(it.qty, 10) || 1), 0);
+    }, 0);
+    const familyLightsTotal = editingFamilyLights.reduce((sum, f) => {
+      return sum + (f.items || []).reduce((is, it) => {
+        const prod = products.find(p => p.id === it.id);
+        return is + (prod ? prod.price : 0) * (parseInt(it.qty, 10) || 1);
+      }, 0);
+    }, 0);
+
+    return /*#__PURE__*/React.createElement("div", {
+      className: "mt-3 pt-3.5 border-t border-slate-200/90 space-y-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-between items-center"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-1.5"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-base"
+    }, "👨‍👩‍👧‍👦"), /*#__PURE__*/React.createElement("h4", {
+      className: "font-bold text-slate-800 text-sm"
+    }, "家人點燈祈福"), /*#__PURE__*/React.createElement("span", {
+      className: "text-[11px] text-slate-500 font-medium"
+    }, "(以家人名義登記點燈)")), /*#__PURE__*/React.createElement("span", {
+      className: "text-xs font-bold text-orange-700 bg-orange-100/70 px-2 py-0.5 rounded-full border border-orange-200 font-mono"
+    }, "文昌 / 平安 / 太歲燈")), /*#__PURE__*/React.createElement("div", {
+      className: "p-3 bg-amber-50/70 rounded-2xl border border-amber-200/90 space-y-2.5"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-xs font-bold text-amber-950 flex items-center gap-1"
+    }, /*#__PURE__*/React.createElement("span", null, "➕"), /*#__PURE__*/React.createElement("span", null, "新增家人姓名與點燈項目：")), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      placeholder: "輸入家人姓名 (如：林小美、陳大同)",
+      value: newFamilyLightName,
+      onChange: e => setNewFamilyLightName(e.target.value),
+      onKeyDown: e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleAddFamilyLightMember();
+        }
+      },
+      className: "flex-1 px-3 py-2 text-xs sm:text-sm border border-amber-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium"
+    }), /*#__PURE__*/React.createElement("button", {
+      type: "button",
+      onClick: handleAddFamilyLightMember,
+      className: "px-3.5 py-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition-all flex items-center gap-1 shrink-0"
+    }, /*#__PURE__*/React.createElement("span", null, "加入名單"))), /*#__PURE__*/React.createElement("div", {
+      className: "space-y-1.5"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-[11px] text-slate-500 font-medium"
+    }, "點選此家人要點的燈種與盞數："), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-1.5"
+    }, lightingProducts.map(lp => {
+      const qty = newFamilySelectedLamps[lp.id] || 0;
+      const isSelected = qty > 0;
+      return /*#__PURE__*/React.createElement("div", {
+        key: lp.id,
+        className: `p-2 rounded-xl border transition-all flex items-center justify-between text-xs ${isSelected ? 'bg-orange-100/80 border-orange-400 font-bold text-orange-950' : 'bg-white border-slate-200 text-slate-700 hover:border-orange-300'}`
+      }, /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        onClick: () => {
+          setNewFamilySelectedLamps(prev => ({
+            ...prev,
+            [lp.id]: isSelected ? 0 : 1
+          }));
+        },
+        className: "flex-1 text-left flex items-center gap-1.5 min-w-0"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: `w-3.5 h-3.5 rounded flex items-center justify-center text-[10px] border ${isSelected ? 'bg-orange-600 border-orange-600 text-white' : 'border-slate-300 bg-white'}`
+      }, isSelected ? '✓' : ''), /*#__PURE__*/React.createElement("div", {
+        className: "truncate"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "truncate font-bold"
+      }, lp.name), /*#__PURE__*/React.createElement("div", {
+        className: "text-[10px] text-slate-400 font-mono font-normal"
+      }, `$${lp.price}元`))), isSelected && /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-1 ml-1"
+      }, /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        onClick: e => {
+          e.stopPropagation();
+          setNewFamilySelectedLamps(prev => ({
+            ...prev,
+            [lp.id]: Math.max(0, (prev[lp.id] || 0) - 1)
+          }));
+        },
+        className: "w-5 h-5 rounded bg-white hover:bg-slate-100 border border-slate-300 font-bold flex items-center justify-center text-xs"
+      }, "-"), /*#__PURE__*/React.createElement("span", {
+        className: "w-4 text-center font-bold font-mono text-xs text-orange-800"
+      }, qty), /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        onClick: e => {
+          e.stopPropagation();
+          setNewFamilySelectedLamps(prev => ({
+            ...prev,
+            [lp.id]: (prev[lp.id] || 0) + 1
+          }));
+        },
+        className: "w-5 h-5 rounded bg-orange-600 hover:bg-orange-700 text-white font-bold flex items-center justify-center text-xs"
+      }, "+")));
+    })))), editingFamilyLights.length === 0 ? /*#__PURE__*/React.createElement("div", {
+      className: "p-3 bg-slate-50/80 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400"
+    }, "尚未登記家人點燈。若家人需個別以個人名義祈福點燈（文昌燈、個人平安燈、太歲燈等），請在上方輸入姓名並點選項目。") : /*#__PURE__*/React.createElement("div", {
+      className: "space-y-2"
+    }, editingFamilyLights.map(fam => {
+      const famTotal = (fam.items || []).reduce((sum, fit) => {
+        const prod = products.find(p => p.id === fit.id);
+        return sum + (prod ? prod.price : 0) * (parseInt(fit.qty, 10) || 1);
+      }, 0);
+      const existingIds = (fam.items || []).map(i => i.id);
+      const unaddedLamps = lightingProducts.filter(lp => !existingIds.includes(lp.id));
+
+      return /*#__PURE__*/React.createElement("div", {
+        key: fam.id,
+        className: "p-3 bg-white rounded-xl border border-orange-200 shadow-2xs space-y-2"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "flex justify-between items-center border-b border-orange-100/70 pb-1.5"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-2 min-w-0"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "text-base shrink-0"
+      }, "👤"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+        className: "font-bold text-slate-900 text-sm"
+      }, fam.name), /*#__PURE__*/React.createElement("span", {
+        className: "text-xs font-mono font-bold text-orange-700 ml-2"
+      }, `$${famTotal.toLocaleString()} 元`))), /*#__PURE__*/React.createElement("button", {
+        type: "button",
+        onClick: () => handleRemoveFamilyLightMember(fam.id),
+        className: "text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded text-xs transition-colors",
+        title: "移除此家人點燈名單"
+      }, "✕ 移除家人")), /*#__PURE__*/React.createElement("div", {
+        className: "space-y-1.5"
+      }, (fam.items || []).map(it => {
+        const p = products.find(prod => prod.id === it.id);
+        const price = p ? p.price : 0;
+        return /*#__PURE__*/React.createElement("div", {
+          key: it.id,
+          className: "flex items-center justify-between bg-orange-50/40 px-2.5 py-1 rounded-lg border border-orange-100 text-xs"
+        }, /*#__PURE__*/React.createElement("div", {
+          className: "flex items-center gap-1.5"
+        }, /*#__PURE__*/React.createElement("span", {
+          className: "text-amber-600"
+        }, "🏮"), /*#__PURE__*/React.createElement("span", {
+          className: "font-bold text-slate-800"
+        }, p ? p.name : it.id), /*#__PURE__*/React.createElement("span", {
+          className: "text-[11px] text-slate-400 font-mono"
+        }, `$${(price * it.qty).toLocaleString()}元`)), /*#__PURE__*/React.createElement("div", {
+          className: "flex items-center gap-1.5"
+        }, /*#__PURE__*/React.createElement("button", {
+          type: "button",
+          onClick: () => handleUpdateFamilyLightItemQty(fam.id, it.id, -1),
+          className: "w-6 h-6 rounded border border-slate-300 bg-white hover:bg-slate-100 font-bold text-slate-700 flex items-center justify-center text-xs active:scale-90"
+        }, "-"), /*#__PURE__*/React.createElement("span", {
+          className: "w-7 text-center font-bold font-mono text-xs text-slate-900"
+        }, it.qty, " 盞"), /*#__PURE__*/React.createElement("button", {
+          type: "button",
+          onClick: () => handleUpdateFamilyLightItemQty(fam.id, it.id, 1),
+          className: "w-6 h-6 rounded bg-orange-600 hover:bg-orange-700 font-bold text-white flex items-center justify-center text-xs active:scale-90"
+        }, "+")));
+      })), unaddedLamps.length > 0 && /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-1 flex-wrap pt-0.5"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "text-[10px] text-slate-400"
+      }, "加點其他燈："), unaddedLamps.map(ulp => /*#__PURE__*/React.createElement("button", {
+        key: ulp.id,
+        type: "button",
+        onClick: () => handleAddLampToFamilyMember(fam.id, ulp.id),
+        className: "text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 hover:bg-orange-100 text-slate-600 hover:text-orange-700 border border-slate-200 transition-colors"
+      }, `+ ${ulp.name} ($${ulp.price})`))));
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-between items-center px-1 text-xs text-slate-500 font-medium"
+    }, /*#__PURE__*/React.createElement("span", null, "家人點燈登記：共 ", editingFamilyLights.length, " 位家人"), /*#__PURE__*/React.createElement("span", {
+      className: "font-bold text-orange-800 font-mono"
+    }, "合計 ", totalFamilyLamps, " 盞燈 • $", familyLightsTotal.toLocaleString(), " 元")));
   })(), /*#__PURE__*/React.createElement("div", {
     className: "p-3.5 bg-orange-50 rounded-2xl border border-orange-200 flex justify-between items-center"
   }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "text-xs font-bold text-orange-950"
-  }, activityMode === 'pudu' ? '中元普渡代辦費與平安大米應收總額' : '新春點燈功德金'), activityMode === 'pudu' && editingFamilyRice.length > 0 && /*#__PURE__*/React.createElement("div", {
+  }, activityMode === 'pudu' ? '中元普渡代辦費與平安大米應收總額' : '新春點燈功德金應收總額'), activityMode === 'pudu' && editingFamilyRice.length > 0 && /*#__PURE__*/React.createElement("div", {
     className: "text-[11px] text-orange-800/80 mt-0.5 font-medium"
-  }, `含信眾代辦/大米 $${calculateDevoteeTotal(editingItems, activityMode).toLocaleString()} + 家人大米 $${(editingFamilyRice.reduce((sum, f) => sum + (parseInt(f.qty, 10) || 1), 0) * (products.find(p => p.id === 'rice')?.price || 300)).toLocaleString()}`)), /*#__PURE__*/React.createElement("div", {
+  }, `含信眾代辦/大米 $${calculateDevoteeTotal(editingItems, activityMode).toLocaleString()} + 家人大米 $${(editingFamilyRice.reduce((sum, f) => sum + (parseInt(f.qty, 10) || 1), 0) * (products.find(p => p.id === 'rice')?.price || 300)).toLocaleString()}`), activityMode === 'lighting' && editingFamilyLights.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "text-[11px] text-orange-800/80 mt-0.5 font-medium"
+  }, `含信眾本人點燈 $${calculateDevoteeTotal(editingItems, activityMode).toLocaleString()} + 家人點燈 $${(calculateDevoteeTotal([], 'lighting', [], editingFamilyLights)).toLocaleString()}`)), /*#__PURE__*/React.createElement("div", {
     className: "text-xl sm:text-2xl font-black text-orange-700 font-mono"
-  }, "$", calculateDevoteeTotal(editingItems, activityMode, editingFamilyRice).toLocaleString(), " 元"))), /*#__PURE__*/React.createElement("div", {
+  }, "$", calculateDevoteeTotal(editingItems, activityMode, editingFamilyRice, editingFamilyLights).toLocaleString(), " 元"))), /*#__PURE__*/React.createElement("div", {
     className: "p-4 sm:p-5 border-t border-slate-100 bg-slate-50 space-y-2"
   }, (activeDevoteeModal[`${activityMode}Status`] === 'unpaid' || !activeDevoteeModal[`${activityMode}Status`]) && /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"
@@ -3191,7 +3593,8 @@ const App = () => {
       const d = {
         ...activeDevoteeModal,
         items: editingItems,
-        familyRice: editingFamilyRice
+        familyRice: editingFamilyRice,
+        familyLights: editingFamilyLights
       };
       setDevotees(prev => prev.map(item => item.id === activeDevoteeModal.id ? d : item));
       setActiveDevoteeModal(null);
@@ -3438,6 +3841,17 @@ const App = () => {
     }, /*#__PURE__*/React.createElement("span", null, "\u7948\u798F\u5E73\u5B89\u5927\u7C73\uFF08\u5BB6\u4EBA\uFF1A", f.name, "\uFF09 x ", f.qty, " \u5305"), /*#__PURE__*/React.createElement("span", {
       className: "font-bold font-mono"
     }, "$", (ricePrice * f.qty).toLocaleString(), " \u5143"));
+  }), Array.isArray(receiptDevotee.familyLights) && receiptDevotee.familyLights.map(fam => {
+    return (fam.items || []).map(fit => {
+      const p = products.find(prod => prod.id === fit.id);
+      const price = p ? p.price : 0;
+      return /*#__PURE__*/React.createElement("div", {
+        key: `${fam.id}_${fit.id}`,
+        className: "flex justify-between items-center text-orange-950 font-medium"
+      }, /*#__PURE__*/React.createElement("span", null, `${p ? p.name : fit.id}（家人：${fam.name}） x ${fit.qty} 盞`), /*#__PURE__*/React.createElement("span", {
+        className: "font-bold font-mono"
+      }, "$", (price * fit.qty).toLocaleString(), " \u5143"));
+      });
   })), /*#__PURE__*/React.createElement("div", {
     className: "pt-2 flex justify-between items-center text-xs sm:text-sm font-bold text-red-900 border-t border-red-100"
   }, /*#__PURE__*/React.createElement("span", null, "\u529F\u5FB7\u91D1\u5408\u8A08\uFF1A"), /*#__PURE__*/React.createElement("span", {
